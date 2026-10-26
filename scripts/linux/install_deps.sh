@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Installs what the native Linux build needs (see BUILDING_LINUX.md):
-#   1. the system packages: clang, SDL3, FreeType, OpenSSL, FFmpeg, glslang, Vulkan loader, OpenGL, Opus (asks for sudo)
+#   1. the system packages: clang, SDL3, FreeType, OpenSSL, FFmpeg, glslang, Vulkan loader, OpenGL, Opus, miniupnpc
+#      (asks for sudo)
 #   2. a Python virtual environment in deps/venv with the build's Python packages
 #   3. deps/Vulkan-Headers: the Khronos headers at the tag the port was built with (v1.4.351)
 #   4. deps/suyu: a sparse checkout of the Eden emulator source, of which only src/core/hle/service/mii is used
@@ -24,7 +25,7 @@ for arg in "$@"; do
     case "$arg" in
         --no-system) SYSTEM=0 ;;
         --steamos-host) STEAMOS_HOST=1 ;;
-        -h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unknown option $arg" >&2; exit 2 ;;
     esac
 done
@@ -64,21 +65,23 @@ if [ "$SYSTEM" = 1 ]; then
         fi
         # shellcheck disable=SC2086
         sudo pacman -S --needed clang pkgconf sdl3 freetype2 openssl ffmpeg glslang vulkan-icd-loader \
-            libglvnd opus python git $EXTRA
+            libglvnd opus miniupnpc python git $EXTRA
     elif command -v apt-get >/dev/null; then
         say "Debian/Ubuntu-based system ($PRETTY_NAME): apt (SDL3 needs Debian 13 / Ubuntu 25.04 or newer)"
         sudo apt-get install -y clang pkg-config libsdl3-dev libfreetype-dev libssl-dev libavformat-dev libavcodec-dev \
-            libswscale-dev libswresample-dev libavutil-dev glslang-dev libvulkan-dev libgl-dev libopus0 python3-venv git
+            libswscale-dev libswresample-dev libavutil-dev glslang-dev libvulkan-dev libgl-dev libopus0 \
+            libminiupnpc-dev python3-venv git
     elif command -v dnf >/dev/null; then
         say "Fedora-based system ($PRETTY_NAME): dnf"
         sudo dnf install -y clang pkgconf-pkg-config SDL3-devel freetype-devel openssl-devel libavformat-free-devel \
             libavcodec-free-devel libswscale-free-devel libswresample-free-devel libavutil-free-devel glslang-devel \
-            vulkan-loader-devel libglvnd-devel opus python3 git
+            vulkan-loader-devel libglvnd-devel opus miniupnpc-devel python3 git
     else
         say "Unknown distribution ($PRETTY_NAME): install these yourself, then run again with --no-system"
         echo "  clang, pkg-config, development files of: SDL3, FreeType, OpenSSL, FFmpeg (libavformat libavcodec"
         echo "  libswscale libswresample libavutil), glslang, Vulkan (headers + loader), OpenGL (libGL); the Opus"
-        echo "  library; Python 3.10+ with venv; git"
+        echo "  library; miniupnpc (optional: online play on Linux, without it the game plays offline); Python 3.10+"
+        echo "  with venv; git"
         exit 1
     fi
     echo "  optional: zenity or kdialog (the game's on-screen keyboard, e.g. for naming a Mii, uses a dialog)"

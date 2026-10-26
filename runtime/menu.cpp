@@ -67,7 +67,7 @@ const char *nvn_vk_device_name(void);                                /* nvn_vk_m
 int osk_active(void);                                                /* osk.c */
 int osk_run(const wchar_t *header, const wchar_t *guide, const wchar_t *initial, int max_len, int min_len, int password, wchar_t *out);      /* osk.c */
 extern "C" void display_refresh_info(double *hz, int *lock_k);      /* display.c */
-int net_online(void); int net_mode(void); const char *net_room_code(void); const char *net_lan_code(void); const char *net_upnp_result(void);      /* net_relay.c */
+int net_available(void); int net_online(void); int net_mode(void); const char *net_room_code(void); const char *net_lan_code(void); const char *net_upnp_result(void);      /* net_relay.c */
 int r1_ra_phase(void);                                               /* r1_state.c (read only): 0 = run-ahead not running now */
 }
 
@@ -1065,9 +1065,13 @@ static void sec_experimental(void) {
     ImGui::SameLine(); ImGui::Text("Online play");
     tag(1, (O.mode != 0) != (O0.mode != 0));
     ImGui::SameLine(); ImGui::TextDisabled("play with others through the game's Local Wireless menu");
-#ifndef _WIN32
-    if (O.mode) ImGui::TextColored(ImVec4(1, 0.6f, 0.3f, 1), "Online play is not in the Linux / macOS build yet: these settings are kept for when it is.");
+    if (O.mode && !net_available()) {
+#ifdef __APPLE__
+        ImGui::TextColored(ImVec4(1, 0.6f, 0.3f, 1), "Online play is not in the macOS build yet: these settings are kept for when it is.");
+#else
+        ImGui::TextColored(ImVec4(1, 0.6f, 0.3f, 1), "This build has no online play (miniupnpc was not found): install it and build again. These settings are kept.");
 #endif
+    }
     if (O.mode) {
         /* (4) rollback netcode over the online connection: Play SSBU.bat (scripts/run.py) starts the normal exe with
          * SSBU_RB_NET=net when graphics.ini has rollback = on (R4: no second build any more, runtime/rb_learned.c) */

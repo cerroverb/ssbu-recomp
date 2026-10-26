@@ -34,7 +34,7 @@ The rest of this page is the same by hand (environment variables or graphics.ini
 There are four ways to connect. Pick one and set it in one of two places:
 
 - Environment variable `SSBU_ONLINE=...`
-- A key in `config\graphics.ini`
+- A key in `config\graphics.ini` (Linux: `build-linux/config/graphics.ini`)
 
 Environment variables are read first. The graphics.ini keys are used when no variable is set.
 
@@ -131,7 +131,10 @@ sees rooms of its own build.
 - No encryption and no authentication. Play only with people you know.
 - By default it uses the game's own delay-based netcode. **Rollback netcode** (experimental) is an option, see below.
 - For now the room code is shown only in the log, on lines starting with `[online]`.
-- On first start, Windows may ask to allow the game through the firewall. LAN and host modes need it.
+- On first start, Windows may ask to allow the game through the firewall; on Linux a firewall (ufw, firewalld) needs the
+  game's UDP port (default 39500) opened. LAN and host modes need it.
+- Linux: the same modes work, with UPnP through miniupnpc (`scripts/linux/install_deps.sh` installs it; without it the game
+  plays offline). Started, joined, listed and matched between two games on one PC; not yet between two PCs.
 
 ## Rollback netcode (experimental)
 

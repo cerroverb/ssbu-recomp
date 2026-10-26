@@ -12,6 +12,7 @@
 *.keys
 *.bfttf
 binaries/
+dump/
 romfs/
 sysdata/
 userdata*/

@@ -51,7 +51,7 @@ fi
 {
     echo "== clang"; clang --version 2>&1 | head -1
     echo; echo "== pkg-config"
-    for p in sdl3 freetype2 openssl libavformat libavcodec libswscale libswresample libavutil vulkan opus; do
+    for p in sdl3 freetype2 openssl libavformat libavcodec libswscale libswresample libavutil vulkan opus miniupnpc; do
         printf '%-14s %s\n' "$p" "$(pkg-config --modversion "$p" 2>/dev/null || echo '-')"
     done
     echo; echo "== python"; "$REPO/deps/venv/bin/python" --version 2>&1 || python3 --version

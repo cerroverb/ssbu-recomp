@@ -595,7 +595,8 @@ LINUX_HINT = '\n(scripts/linux/install_deps.sh installs everything the Linux bui
 
 def deps_linux(cx):
     """--target linux: the system's clang and the development packages of SDL3, FreeType, OpenSSL, FFmpeg, glslang, Vulkan
-    and OpenGL; the Opus and Vulkan libraries the game loads at run time. scripts/linux/install_deps.sh installs them."""
+    and OpenGL; the Opus and Vulkan libraries the game loads at run time. scripts/linux/install_deps.sh installs them.
+    miniupnpc is optional: without it the build has no online play (net_off.c answers as with SSBU_ONLINE unset)."""
     a = cx.a
     missing = []
     for mod, pkg in (('numpy', 'numpy'), ('lz4.block', 'lz4'), ('zstandard', 'zstandard'), ('PIL', 'Pillow'), ('unicorn', 'unicorn')):
@@ -625,6 +626,14 @@ def deps_linux(cx):
         if r.returncode:
             raise Fail('development files of %s (%s) not found by pkg-config%s' % (name, pc, LINUX_HINT))
         say('  %-13s %s' % (pc, r.stdout.strip()))
+    # online play (net_relay.c + net_minilobby.c, UPnP through miniupnpc): optional, so only a warning. Without it the build
+    # compiles net_off.c and the game's Local Wireless answers as an offline console, as it always did on Linux.
+    r = subprocess.run(['pkg-config', '--modversion', 'miniupnpc'], capture_output=True, text=True)
+    if r.returncode:
+        say('  %-13s not found: the build will have NO online play (install libminiupnpc-dev / miniupnpc / '
+            'miniupnpc-devel to enable it)' % 'miniupnpc')
+    else:
+        say('  %-13s %s' % ('miniupnpc', r.stdout.strip()))
     for h, name in (('/usr/include/glslang/Include/glslang_c_interface.h', 'glslang'), ('/usr/include/GL/gl.h', 'OpenGL (libGL)')):
         if not os.path.exists(h):
             raise Fail('%s headers not found (%s)%s' % (name, h, LINUX_HINT))

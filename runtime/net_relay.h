@@ -23,6 +23,7 @@
 
 enum { NET_MODE_LOBBY, NET_MODE_LAN, NET_MODE_HOST, NET_MODE_JOIN };
 #define VNET_BEACON_PORT 39501          /* LAN mode: the in-game lobby's beacon (multicast 239.255.13.13 and broadcast) */
+int net_available(void);                /* this build has online play (always on Windows, Linux with miniupnpc) */
 int net_online(void);                   /* asked for (config read on the first call) */
 int net_mode(void);                     /* NET_MODE_* (valid when net_online()) */
 const char *net_room_code(void);        /* HOST mode: the room code to give the other player ("" until known); JOIN mode: this

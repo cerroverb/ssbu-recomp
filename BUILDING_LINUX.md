@@ -27,7 +27,7 @@ Tested on one PC: CachyOS (Arch-based, kernel 7.2), 24 threads, 31 GB RAM, NVIDI
 | Keyboard | works (tested); controllers through SDL3 are the same code as on Windows but **not tested with a real pad on Linux** |
 | Album movie recording (the game's video capture to the album) | **not implemented** on Linux; the 7 self-test cases for it are accepted as known failures |
 | OpenGL renderer | not on Linux: Vulkan only |
-| Online play (experimental on Windows, `SSBU_ONLINE`) | not in the Linux build yet: the game's Local Wireless answers as an offline console |
+| Online play (experimental, `SSBU_ONLINE`) | works: the game's Local Wireless over a LAN, a room code or a lobby server, with UPnP port mapping through miniupnpc ([docs/ONLINE.md](docs/ONLINE.md)). Started, joined, listed and matched between two games on one PC; **not yet tried between two PCs over the internet**, and UPnP was only probed (the router answered) here, not used for a match. Without miniupnpc the build compiles the "off" version and Local Wireless answers as an offline console |
 | Other distributions, AMD / Intel GPUs, X11, Steam Deck | not tested. The package lists for Debian/Ubuntu and Fedora in `install_deps.sh` are best guesses; `setup.py` checks every library and says which one is missing |
 
 ## What you need
@@ -62,7 +62,7 @@ scripts/linux/install_deps.sh
 ```
 
 It installs, using your package manager (pacman, apt or dnf; asks for sudo):
-clang, pkg-config, SDL3, FreeType, OpenSSL, FFmpeg, glslang, the Vulkan loader, libGL, Opus, Python, git.
+clang, pkg-config, SDL3, FreeType, OpenSSL, FFmpeg, glslang, the Vulkan loader, libGL, Opus, miniupnpc, Python, git.
 Then, without root, into `deps/` (ignored by git):
 
 - `deps/venv`: a Python virtual environment with numpy, lz4, zstandard, Pillow, unicorn, capstone, pycryptodome
@@ -94,6 +94,12 @@ The FFmpeg must be able to decode VP9 and Vorbis (the game's movies). Every dist
 
 Optional: `zenity` or `kdialog`. The game's on-screen keyboard (naming a Mii, a ruleset, ...) and the settings menu's
 "Type in a dialog" buttons (your name, a room code) open a dialog with one of them.
+
+Online play ([docs/ONLINE.md](docs/ONLINE.md)) needs **miniupnpc** (Arch `miniupnpc`, Debian/Ubuntu `libminiupnpc-dev`,
+Fedora `miniupnpc-devel`), which `install_deps.sh` installs: it maps the game's UDP port on your router (UPnP) when you
+host a room, as the Windows build's COM UPnP does. `setup.py` prints a warning and builds without online play if it is
+missing. On Linux the game needs the UDP port (default 39500) open in your PC's firewall if you run one (`ufw allow
+39500/udp`, `firewall-cmd --add-port=39500/udp`); LAN mode needs it on the local network only.
 
 `install_deps.sh` also fetches Dear ImGui v1.91.9b (MIT) into `deps/imgui`: the in-game settings menu (F1). Without it the
 game builds without the menu (`setup.py` says so; `--imgui <folder>` or `IMGUI_ROOT` point to another copy).
@@ -185,8 +191,9 @@ keyboard key F1. Text boxes: in Desktop Mode use the keyboard or "Type in a dial
 Steam's on-screen keyboard (Steam + X) types into the active box (SDL may also open it by itself when a box is
 selected; not verified).
 
-Not on Linux yet: **Online play** (the Experimental page saves the settings for later and says so), and the Log page
-shows the log only when the game's output goes to a file (`play.sh` does that).
+Everything on the Experimental page works on Linux now, online play included ([docs/ONLINE.md](docs/ONLINE.md); it needs
+miniupnpc, see "Dependencies"). The Log page shows the log only when the game's output goes to a file (`play.sh` does
+that).
 
 ## Fonts
 
@@ -205,6 +212,11 @@ the same `--dump` (add `--redo convert` if you built before).
 - **The game exits at once with code 7:** a font file is missing (see "Fonts"). The log line starts with `nn::pl:`.
 - **A black window that never changes:** look at the output for `nvn_vk:` lines. `vulkaninfo --summary` must list your GPU.
 - **No sound:** the game plays through SDL3, so PipeWire / PulseAudio must be running. The log says which audio device was opened.
+- **Online play does not connect:** the log lines that start with `[online]` say what happened (lobby, LAN, UPnP, STUN).
+  Host and join modes need the game's UDP port (default 39500) open in your firewall, and a router that either does UPnP
+  or forwards that port to this PC; LAN mode needs UDP port 39501 between the PCs. If the log shows no `[online]` line at
+  all, run `deps/venv/bin/python scripts/setup.py --target linux --tools-only` and look for "miniupnpc not found": that
+  build has no online play (install the package and run it again).
 - **To report a problem**, run `scripts/linux/collect_logs_linux.sh`: it makes `~/ssbu_linux_report_<date>.zip` with the
   build logs, the last game logs and facts about your PC (distribution, GPU and driver, Vulkan, library versions), never
   your dump or a game file. Send that file, or at least `~/.local/share/ssbu-recomp/last_run.log` (written by every `./play.sh`). It lists the

@@ -8,17 +8,12 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <mstcpip.h>
+#include "net_sock.h"           /* winsock on Windows, plat/winsock2.h on Linux / macOS */
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#ifndef SIO_UDP_CONNRESET
-#define SIO_UDP_CONNRESET _WSAIOW(IOC_VENDOR, 12)
-#endif
 
 enum { ML_PROTO = 1, ML_JOIN = 1, ML_WELCOME, ML_REJECT, ML_PING, ML_PONG, ML_DATA, ML_LEAVE, ML_LIST, ML_LISTING,
        ML_LIST_END, ML_PEERS, ML_PUNCH, ML_DIRECT, ML_BCAST };
@@ -136,9 +131,10 @@ static void ml_text(char *dst, size_t cap, const uint8_t *raw, size_t n) {   /* 
 }
 
 static uint64_t ml_random64(void) {
+    uint64_t v = 0;
+#ifdef _WIN32
     static BOOLEAN (WINAPI *rtlgen)(PVOID, ULONG);
     static int tried;
-    uint64_t v = 0;
     if (!tried) {
         HMODULE m = LoadLibraryA("advapi32.dll");
         rtlgen = m ? (BOOLEAN (WINAPI *)(PVOID, ULONG))GetProcAddress(m, "SystemFunction036") : NULL;
@@ -146,6 +142,9 @@ static uint64_t ml_random64(void) {
         tried = 1;
     }
     if (rtlgen && rtlgen(&v, sizeof v)) return v;
+#else
+    if (SystemFunction036(&v, sizeof v)) return v;      /* plat_posix.c: getrandom() */
+#endif
     ml_rng_state ^= ml_rng_state << 13; ml_rng_state ^= ml_rng_state >> 7; ml_rng_state ^= ml_rng_state << 17;
     return ml_rng_state;
 }
@@ -307,6 +306,7 @@ static void ml_on_join(const uint8_t *p, int len, const struct sockaddr_in *at, 
     uint32_t lan_ip = ml_get32(p + 116);
     uint16_t lan_port = ml_get16(p + 120);
     int direct = p[122] & 1;
+    uint32_t peer_ip = ntohl(at->sin_addr.s_addr);      /* the player's public address, host order (for the log line) */
     if (c && memcmp(c->nonce, nonce, 8)) { ml_drop(c, "restarted"); c = NULL; }
     if (!c) {   /* the same game from a new port (its router remapped it)? */
         for (int i = 0; i < ML_MAX_CLIENTS; i++) {
@@ -330,7 +330,7 @@ static void ml_on_join(const uint8_t *p, int len, const struct sockaddr_in *at, 
         memcpy(c->nonce, nonce, 8);
         snprintf(c->name, sizeof c->name, "%s", name); snprintf(c->build, sizeof c->build, "%s", build); snprintf(c->code, sizeof c->code, "%s", code);
         ml_log("%s joined (code '%s', build %s) as %s from %u.%u.%u.%u:%d, LAN %u.%u.%u.%u:%u, direct %s", name, code, build, ml_vip(ip),
-               at->sin_addr.S_un.S_un_b.s_b1, at->sin_addr.S_un.S_un_b.s_b2, at->sin_addr.S_un.S_un_b.s_b3, at->sin_addr.S_un.S_un_b.s_b4, ntohs(at->sin_port), lan_ip >> 24, lan_ip >> 16 & 255, lan_ip >> 8 & 255, lan_ip & 255,
+               peer_ip >> 24, peer_ip >> 16 & 255, peer_ip >> 8 & 255, peer_ip & 255, ntohs(at->sin_port), lan_ip >> 24, lan_ip >> 16 & 255, lan_ip >> 8 & 255, lan_ip & 255,
                lan_port, direct ? "yes" : "no");
     }
     c->seen = now; c->lan_ip = lan_ip; c->lan_port = lan_port; c->direct = direct;
@@ -759,7 +759,7 @@ static DWORD WINAPI ml_thread_main(LPVOID arg) {
             for (int i = 0; i < ML_OPEN_MAX; i++) if (ml_open[i].used) ml_send("SUo", 4, &ml_open[i].at);
         }
         LeaveCriticalSection(&ml_lock);
-        if (n < 0 && WSAGetLastError() != WSAETIMEDOUT && WSAGetLastError() != WSAECONNRESET && ml_running) Sleep(10);
+        if (n < 0 && WSAGetLastError() != WSAETIMEDOUT && WSAGetLastError() != WSAECONNRESET && WSAGetLastError() != WSAEWOULDBLOCK && ml_running) Sleep(10);
     }
     return 0;
 }
@@ -769,16 +769,13 @@ static uint16_t minilobby_start(uint32_t bind_ip_host_order, uint16_t port, int 
     WSADATA wsa;
     struct sockaddr_in a;
     int al = sizeof a;
-    DWORD timeout = 50;
-    BOOL off = FALSE;
-    DWORD bytes = 0;
     if (ml_running) return 0;
     if (!ml_lock_ready) { InitializeCriticalSection(&ml_lock); ml_lock_ready = 1; }
     WSAStartup(MAKEWORD(2, 2), &wsa);
     SOCKET s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (s == INVALID_SOCKET) return 0;
-    WSAIoctl(s, SIO_UDP_CONNRESET, &off, sizeof off, NULL, 0, &bytes, NULL, NULL);   /* (no ICMP errors on receive) */
-    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof timeout);
+    net_sock_no_connreset(s);                     /* (no ICMP errors on receive) */
+    net_sock_rcv_timeout(s, 50);
     memset(&a, 0, sizeof a);
     a.sin_family = AF_INET;
     a.sin_addr.s_addr = htonl(bind_ip_host_order);

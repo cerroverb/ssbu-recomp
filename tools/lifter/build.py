@@ -194,10 +194,17 @@ if TARGET_POSIX:
         return subprocess.run(['pkg-config'] + list(args) + ['sdl3', 'freetype2', 'openssl', 'libavformat', 'libavcodec', 'libswscale', 'libswresample', 'libavutil'], capture_output=True, text=True, check=True).stdout.split()
     _sdl_inc = HOST_FLAGS.index('-I', HOST_FLAGS.index('-Ddyn_sym_count=(*game_dyn_sym_count_p)'))      # the SDL3 VC package: the system's SDL3 instead
     HOST_FLAGS = HOST_FLAGS[:_sdl_inc] + HOST_FLAGS[_sdl_inc + 2:] + PLAT_FLAGS + ['-I', os.path.join(HERE, 'plat')] + pkg('--cflags')
-    # plat_mf.c: the Media Foundation subset nnmovie_mf.c uses, on FFmpeg. Not in the Linux build yet: online play
-    # (net_relay.c: Winsock extensions, COM UPnP; net_off.c answers "off", as with SSBU_ONLINE unset)
-    HOST_SOURCES = [n for n in HOST_SOURCES if n != 'net_relay.c'] + ['plat_posix.c', 'plat_mf.c', 'net_off.c']
-    LIBS = pkg('--libs') + ['-lGL', '-lm', '-ldl', '-lpthread']      # libGL: the OpenGL front end is linked (not used)
+    # Online play (net_relay.c / net_minilobby.c / net_upnp_posix.c) on Linux: its UDP sockets, threads and the in-game
+    # lobby are the plat layer's; UPnP-IGD port mapping comes from miniupnpc instead of Windows COM (pkg-config
+    # miniupnpc, net_upnp_posix.c). macOS stays on net_off.c for now (its dependency list has no miniupnpc): Online play
+    # answers as with SSBU_ONLINE unset, as it did on every POSIX target before.
+    HAVE_MINIUPNPC = TARGET_LINUX and subprocess.run(['pkg-config', '--exists', 'miniupnpc']).returncode == 0
+    if HAVE_MINIUPNPC:
+        HOST_FLAGS = HOST_FLAGS + subprocess.run(['pkg-config', '--cflags', 'miniupnpc'], capture_output=True, text=True, check=True).stdout.split()
+        HOST_SOURCES = HOST_SOURCES + ['plat_posix.c', 'plat_mf.c']
+    else:
+        HOST_SOURCES = [n for n in HOST_SOURCES if n != 'net_relay.c'] + ['plat_posix.c', 'plat_mf.c', 'net_off.c']
+    LIBS = pkg('--libs') + (['-lminiupnpc'] if HAVE_MINIUPNPC else []) + ['-lGL', '-lm', '-ldl', '-lpthread']      # libGL: the OpenGL front end is linked (not used)
     if TARGET_MACOS:                                     # OpenGL is a system framework; dl / pthread are in libSystem
         LIBS = pkg('--libs') + ['-framework', 'OpenGL', '-lm']
     # U2 (plan/phases/U2_menu_linux.md): the settings menu on Linux / macOS too: menu.cpp's own SDL branch, plat/windows.h
@@ -338,6 +345,10 @@ def cmd_link(host_only=False):
     newest_dep = max([os.path.getmtime(os.path.join(HERE, h)) for h in os.listdir(HERE) if h.endswith(('.h', '.inc'))] + [os.path.getmtime(os.path.join(HERE, 'build.py'))])
     # nvn_vk.c includes the other nvn_vk*.c files as one translation unit: an edit of one of them must rebuild nvn_vk.obj
     newest_vk = max(os.path.getmtime(os.path.join(HERE, n)) for n in os.listdir(HERE) if n.startswith('nvn_vk') and n.endswith('.c'))
+    # net_relay.c includes net_minilobby.c and its UPnP file (net_upnp.c on Windows, net_upnp_posix.c on Linux) as one
+    # translation unit, and both include net_sock.h: an edit of any of them must rebuild net_relay.obj
+    newest_net = max([os.path.getmtime(os.path.join(HERE, n)) for n in
+                      ('net_sock.h', 'net_minilobby.c', 'net_upnp.c', 'net_upnp_posix.c') if os.path.exists(os.path.join(HERE, n))], default=0)
     objs, jobs = [], []
     if not HAVE_IMGUI:
         print('settings menu: Dear ImGui not found in %s (IMGUI_ROOT): built without it (menu_stub.c; F1 does nothing)' % IMGUI)
@@ -349,6 +360,7 @@ def cmd_link(host_only=False):
         objs.append(obj)
         if not os.path.exists(obj) or os.path.getmtime(obj) < max(os.path.getmtime(src), newest_dep, newest_vk if n == 'nvn_vk.c' else 0,
                                                                        os.path.getmtime(os.path.join(HERE, 'plat_mf.c')) if n == 'mf_ffmpeg.c' else 0,   # mf_ffmpeg.c includes plat_mf.c
+                                                                       newest_net if n == 'net_relay.c' else 0,
                                                                        os.path.getmtime(os.path.join(HERE, 'skyline.c')) if n == 'nnro.c' else 0):   # nnro.c includes skyline.c
             jobs.append((src, obj))
     for src in CXX_SOURCES:                          # U1: the settings menu (C++); imgui's own files depend on their source and menu_imconfig.h only
