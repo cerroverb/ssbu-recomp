@@ -7,3 +7,4 @@ format like this:
 - What was tested:
 - Result:
 - Screenshot, video or log:
+- LLM used:
